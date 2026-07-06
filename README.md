@@ -29,7 +29,7 @@
 - **tuic**：`tuic://uuid:password@server:port...`
 - **anytls**：`anytls://uuid@server:port...`
 - **hysteria2**：`hysteria2://base64@server:port...`
-- **SOCKS5**：`socks5://user:pass@server:port` 或 `socks://user:pass@server:port` 或 `socks5://server:port`
+- **SOCKS5**：`socks5://user:pass@server:port` 或 `socks://user:pass@server:port`
 
 ## 使用
 

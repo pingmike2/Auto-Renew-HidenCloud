@@ -320,7 +320,8 @@ def main():
             
             # 获取当前出口ip
             current_ip = get_current_ip(PROXY_SERVER)
-            log(f"🎯 当前出口IP: {current_ip}")
+            ip_masked = re.sub(r'(\d+\.\d+)\.\d+\.\d+', r'\1.**.**', current_ip)
+            log(f"🎯 当前出口IP: {ip_masked}")
 
             log("🚀 启动浏览器...")
             browser = p.chromium.launch(

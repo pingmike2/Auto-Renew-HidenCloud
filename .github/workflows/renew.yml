@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
   Renew-HidenCloud:
@@ -70,3 +70,14 @@ jobs:
               gh run delete $run_id || true
             fi
           done
+      - name: Commit time.txt to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          date '+%Y-%m-%d %H:%M:%S' > time.txt
+
+          git add time.txt
+          git commit -m "Update time.txt" || exit 0
+          git push

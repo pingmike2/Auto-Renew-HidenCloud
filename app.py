@@ -33,7 +33,6 @@ def get_current_ip(proxy_server=None):
     proxies = {"http": proxy_server, "https": proxy_server} if (proxy_server and IS_PROXY) else None
     try:
         resp = requests.get("https://api.ip.sb/ip", proxies=proxies, timeout=15)
-        # log(f"请求出口IP完成, status={resp.status_code}")
         if resp.status_code == 200:
             return resp.text.strip()
         return "获取失败"
@@ -110,6 +109,26 @@ def handle_cloudflare(page):
             pass
     log("❌ 验证超时。")
     return False
+
+def remove_blocking_overlays(page):
+    """移除阻挡点击的 Cookie/Consent 弹窗遮罩"""
+    try:
+        log("🧹 尝试清理可能遮挡的弹窗遮罩层...")
+        page.evaluate("""
+            () => {
+                const selectors = [
+                    '.fc-consent-root', 
+                    '.fc-dialog-overlay',
+                    '[class*="fc-consent"]'
+                ];
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => el.remove());
+                });
+                document.body.style.overflow = 'auto';
+            }
+        """)
+    except Exception as e:
+        log(f"⚠️ 清理遮罩层出错 (可忽略): {e}")
 
 def login(page):
     # 1. Cookie 登录尝试
@@ -216,12 +235,14 @@ def get_due_date(page):
     return "未知"
 
 def renew_service(page):
-
     try:
         log("➡ 进入续期流程...")
         if page.url != SERVICE_URL:
             page.goto(SERVICE_URL, wait_until="domcontentloaded", timeout=60000)
         handle_cloudflare(page)
+
+        # 移除可能的弹窗遮挡
+        remove_blocking_overlays(page)
 
         log("🖱️ 准备点击 'Renew' 按钮...")
         renew_btn = page.locator('button:has-text("Renew")')
@@ -233,7 +254,8 @@ def renew_service(page):
                 renew_btn.wait_for(state="visible", timeout=10000)
                 renew_btn.scroll_into_view_if_needed()
                 log(f"🖱️ 第 {i+1} 次尝试点击 'Renew'...")
-                renew_btn.click()
+                # 增加 force=True 强制点击，防止被隐形元素拦截
+                renew_btn.click(force=True)
 
                 # 等待一小段时间，检测是否出现“未到续期时间”弹窗
                 time.sleep(2)
@@ -262,7 +284,7 @@ def renew_service(page):
 
         handle_cloudflare(page)
         log("🖱️ 点击 'Create Invoice'...")
-        create_btn.click()
+        create_btn.click(force=True)
 
         new_invoice_url = None
         start_wait = time.time()
@@ -288,7 +310,7 @@ def renew_service(page):
         log("🔎 查找 'Pay' 按钮...")
         pay_btn = page.locator('a:has-text("Pay"):visible, button:has-text("Pay"):visible').first
         pay_btn.wait_for(state="visible", timeout=30000)
-        pay_btn.click()
+        pay_btn.click(force=True)
         log("✅ 'Pay' 按钮已点击。")
 
         # 等待支付确认页面或跳转回服务页
@@ -320,7 +342,8 @@ def main():
             
             # 获取当前出口ip
             current_ip = get_current_ip(PROXY_SERVER)
-            log(f"🎯 当前出口IP: {current_ip}")
+            ip_masked = re.sub(r'(\d+\.\d+)\.\d+\.\d+', r'\1.**.**', current_ip)
+            log(f"🎯 当前出口IP: {ip_masked}")
 
             log("🚀 启动浏览器...")
             browser = p.chromium.launch(

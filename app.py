@@ -111,28 +111,6 @@ def handle_cloudflare(page):
     log("❌ 验证超时。")
     return False
 
-# ===== 新增：处理 Cookie/GDPR 弹窗 =====
-def handle_consent(page):
-    try:
-        # 方案1：尝试点击 Accept
-        for text in ["Accept", "Agree", "I Accept", "Got it"]:
-            btn = page.locator(f'button:has-text("{text}")')
-            if btn.count() > 0:
-                btn.first.click(timeout=3000)
-                log(f"✅ 已点击 Cookie 按钮: {text}")
-                time.sleep(1)
-                return True
-
-        # 方案2：直接删除遮罩（最稳）
-        page.evaluate("""
-        document.querySelectorAll('.fc-consent-root, .fc-dialog-container')
-            .forEach(el => el.remove());
-        """)
-        log("🧹 已清理 Cookie 遮罩层")
-        return True
-    except Exception:
-        return False
-
 def login(page):
     # 1. Cookie 登录尝试
     if COOKIE_VALUE:
@@ -243,9 +221,7 @@ def renew_service(page):
         log("➡ 进入续期流程...")
         if page.url != SERVICE_URL:
             page.goto(SERVICE_URL, wait_until="domcontentloaded", timeout=60000)
-
         handle_cloudflare(page)
-        handle_consent(page)
 
         log("🖱️ 准备点击 'Renew' 按钮...")
         renew_btn = page.locator('button:has-text("Renew")')
@@ -256,19 +232,16 @@ def renew_service(page):
             try:
                 renew_btn.wait_for(state="visible", timeout=10000)
                 renew_btn.scroll_into_view_if_needed()
-
-                # ⭐ 每次点击前都清理一次
-                handle_consent(page)
-
                 log(f"🖱️ 第 {i+1} 次尝试点击 'Renew'...")
-                renew_btn.click(timeout=10000)
+                renew_btn.click()
 
+                # 等待一小段时间，检测是否出现“未到续期时间”弹窗
                 time.sleep(2)
-
                 page_text = page.locator("body").inner_text()
                 if "Renewal Restricted" in page_text or "can only renew" in page_text.lower():
                     log("⚠️ 未到续期时间，无法续期。")
-                    return "NOT_TIME"
+                    page.screenshot(path="renew_not_allowed.png")
+                    return "NOT_TIME"   # 特殊状态
 
                 log("🖲️ 等待弹窗出现...")
                 try:
@@ -277,45 +250,57 @@ def renew_service(page):
                     log("✅ 弹窗已成功弹出！")
                     break
                 except:
-                    log("⚠️ 弹窗未出现，准备重试...")
+                    log("⚠️ 弹窗未出现，可能是点击未响应，准备重试...")
                     time.sleep(2)
-
             except Exception as e:
                 log(f"❌ 点击尝试出错: {e}")
 
         if not modal_opened:
-            log("❌ 错误：续费弹窗仍未出现")
+            log("❌ 错误：尝试多次后，续费弹窗仍未出现。")
+            page.screenshot(path="renew_modal_failed.png")
             return False
 
-        handle_consent(page)
         handle_cloudflare(page)
-
         log("🖱️ 点击 'Create Invoice'...")
         create_btn.click()
 
-        # 等待跳转
+        new_invoice_url = None
         start_wait = time.time()
         while time.time() - start_wait < 90:
             if "/payment/invoice/" in page.url:
-                log(f"🎉 页面已跳转: {page.url}")
+                new_invoice_url = page.url
+                log(f"🎉 页面已跳转: {new_invoice_url}")
                 break
-            handle_cloudflare(page)
+            if page.locator('iframe[src*="challenges.cloudflare.com"]').count() > 0:
+                log("⚠️ 遇到拦截，尝试处理...")
+                handle_cloudflare(page)
             time.sleep(1)
 
+        if not new_invoice_url:
+            log("❌ 未能进入发票页面，超时。")
+            page.screenshot(path="renew_stuck_invoice.png")
+            return False
+
+        if page.url != new_invoice_url:
+            page.goto(new_invoice_url)
+        handle_cloudflare(page)
+
         log("🔎 查找 'Pay' 按钮...")
-        pay_btn = page.locator('a:has-text("Pay"), button:has-text("Pay")').first
+        pay_btn = page.locator('a:has-text("Pay"):visible, button:has-text("Pay"):visible').first
         pay_btn.wait_for(state="visible", timeout=30000)
-
-        handle_consent(page)
         pay_btn.click()
+        log("✅ 'Pay' 按钮已点击。")
 
+        # 等待支付确认页面或跳转回服务页
         time.sleep(5)
-        page.goto(SERVICE_URL)
-
+        # 返回服务管理页面以获取新的到期时间
+        page.goto(SERVICE_URL, wait_until="domcontentloaded", timeout=60000)
+        handle_cloudflare(page)
         return True
 
     except Exception as e:
         log(f"❌ 续费异常: {e}")
+        page.screenshot(path="renew_error.png")
         return False
 
 def main():
@@ -335,8 +320,7 @@ def main():
             
             # 获取当前出口ip
             current_ip = get_current_ip(PROXY_SERVER)
-            ip_masked = re.sub(r'(\d+\.\d+)\.\d+\.\d+', r'\1.**.**', current_ip)
-            log(f"🎯 当前出口IP: {ip_masked}")
+            log(f"🎯 当前出口IP: {current_ip}")
 
             log("🚀 启动浏览器...")
             browser = p.chromium.launch(

@@ -43,8 +43,8 @@ jobs:
 
       - name: 🚀 运行续期脚本
         env:
-          EMAIL: ${{ secrets.HIDENCLOUD_EMAIL }}
-          PASSWORD: ${{ secrets.HIDENCLOUD_PASSWORD }}
+          EMAIL: ${{ secrets.EMAIL || secrets.HIDENCLOUD_EMAIL }}
+          PASSWORD: ${{ secrets.PASSWORD || secrets.HIDENCLOUD_PASSWORD }}
           COOKIE_VALUE: ${{ secrets.COOKIE_VALUE }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}

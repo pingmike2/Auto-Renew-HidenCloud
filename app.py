@@ -28,7 +28,7 @@ EMAIL        = os.environ.get('EMAIL') or ""           # HidenCloud 邮箱（仅
 PASSWORD     = os.environ.get('PASSWORD') or ""        # HidenCloud 密码（已停用，保留字段）
 TG_CHAT_ID   = os.environ.get('TG_CHAT_ID') or ""
 TG_BOT_TOKEN = os.environ.get('TG_BOT_TOKEN') or ""
-AREA = "新加坡"
+AREA = os.environ.get('AREA') or ""  # 区域标签(可选，留空则 TG 通知不显示区域)
 BASE_URL = "https://dash.hidencloud.com"
 LOGIN_URL = f"{BASE_URL}/auth/login"
 PROFILE_DIR   = os.environ.get("BROWSER_USER_DATA_DIR", "").strip() # 持久化文件夹（空=每次全新）
@@ -98,7 +98,7 @@ def send_telegram_notification(status, old_due, new_due, login_mode=""):
         f"🎉 HidenCloud 续期通知\n\n"
         f"{status}\n"
         f"👤 账号: {masked_EMAIL}\n"
-        f"👤 区域: {AREA}\n"
+        + (f"👤 区域: {AREA}\n" if AREA else "")
         + (f"🔐 登录: {login_mode}\n" if login_mode else "")
         + f"📅 续期前到期：{old_due}\n"
         f"📅 续期后到期：{new_due}\n"

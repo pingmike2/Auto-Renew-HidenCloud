@@ -58,6 +58,17 @@ try {
 """
 
 
+def mask_ip(ip):
+    """IP 只显示前两段，其余打码：64.181.x.x"""
+    try:
+        parts = ip.strip().split('.')
+        if len(parts) == 4 and all(p.isdigit() for p in parts):
+            return f"{parts[0]}.{parts[1]}.x.x"
+    except Exception:
+        pass
+    return ip
+
+
 def get_current_ip(proxy_server=None):
     proxies = {"http": proxy_server, "https": proxy_server} if (proxy_server and IS_PROXY) else None
     try:
@@ -1005,7 +1016,7 @@ def main():
                 log("🌐 直连模式（未使用代理）")
 
             current_ip = get_current_ip(PROXY_SERVER)
-            log(f"🎯 当前出口IP: {current_ip}")
+            log(f"🎯 当前出口IP: {mask_ip(current_ip)}")
 
             log("🚀 启动浏览器...")
             # GitHub Actions 下无持久 profile，用临时目录；本地可设 BROWSER_USER_DATA_DIR 持久化

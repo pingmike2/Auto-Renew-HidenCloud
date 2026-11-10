@@ -14,7 +14,7 @@
 | `DISCORD_TOTP_SECRET` | ❌可选 | Discord 2FA 的 TOTP base32 密钥（开了 2FA 才需要） | |
 | `EMAIL`         | ❌可选 | HidenCloud 邮箱（仅通知展示用，配合 `PASSWORD`） | |
 | `PASSWORD`      | ❌可选 | HidenCloud 密码（已停用，仅通知展示保留） | |
-| `NODE_LINK`     | ❌可选 | 代理节点地址,例如:vless:// vmess:// trojan:// hysteria2:// anytls://| |
+| `NODE_LINK`     | ✅必填 | 代理节点地址,例如:vless:// vmess:// trojan:// hysteria2:// anytls://(不配置会导致 Discord 异地登录验证,收验证邮件) |
 | `TG_BOT_TOKEN`  | ❌可选 | Telegram Bot Token | 
 | `TG_CHAT_ID`    | ❌可选 | Telegram Chat ID |
 

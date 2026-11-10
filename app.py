@@ -3,13 +3,13 @@
 """
 HidenCloud 自动续期（合并版，适配 GitHub Actions）
 
-思路合并自：
+来源思路：
 - hidencloud.py：Discord OAuth 登录主路径、CDP 底层鼠标注入、增强 Turnstile、
   通用验证码(hCaptcha/reCAPTCHA)、TOTP 2FA、持久化 profile
-- app.py：GitHub 工作流适配（env 读取、COOKIE_VALUE 注入、代理 env 化）、
+- app.py：GitHub 工作流适配（env 读取、代理 env 化）、
   Cloudflare 整页挑战处理、Pay 按钮点击续期
 
-登录顺序：COOKIE_VALUE / 持久 profile → Discord OAuth → 邮箱密码兜底(默认关)
+登录方式：DISCORD_EMAIL + DISCORD_PASSWORD（HidenCloud 已停用邮箱密码与长效 cookie）
 """
 
 import os, re, sys, time, random, hmac, hashlib, base64, struct, requests
@@ -24,9 +24,8 @@ if "XAUTHORITY" not in os.environ and os.path.exists("/home/browser/.Xauthority"
     os.environ["XAUTHORITY"] = "/home/browser/.Xauthority"
 
 # --- 环境变量 (可在Settings里设置secrets或者私库直接填写在双引号里)---
-EMAIL        = os.environ.get('EMAIL') or ""           # HidenCloud 邮箱（仅兜底用）
-PASSWORD     = os.environ.get('PASSWORD') or ""        # HidenCloud 密码（仅兜底用）
-COOKIE_VALUE = os.environ.get('COOKIE_VALUE') or ""    # remember_web cookie 值（可选，首选登录方式）
+EMAIL        = os.environ.get('EMAIL') or ""           # HidenCloud 邮箱（仅通知展示用）
+PASSWORD     = os.environ.get('PASSWORD') or ""        # HidenCloud 密码（已停用，保留字段）
 TG_CHAT_ID   = os.environ.get('TG_CHAT_ID') or ""
 TG_BOT_TOKEN = os.environ.get('TG_BOT_TOKEN') or ""
 AREA = "新加坡"
@@ -34,10 +33,8 @@ BASE_URL = "https://dash.hidencloud.com"
 LOGIN_URL = f"{BASE_URL}/auth/login"
 PROFILE_DIR   = os.environ.get("BROWSER_USER_DATA_DIR", "").strip() # 持久化文件夹（空=每次全新）
 
-# --- Discord 登录配置 ---
-USE_DISCORD = os.environ.get('USE_DISCORD', 'true').lower() == 'true'   # 主路径：Discord OAuth
-ALLOW_PASSWORD_FALLBACK = os.environ.get('ALLOW_PASSWORD_FALLBACK', 'false').lower() == 'true'
-DISCORD_EMAIL    = os.environ.get('DISCORD_EMAIL') or ""      # Discord 账号（留空=只用手动登录/已存 cookie）
+# --- Discord 登录配置（唯一登录方式）---
+DISCORD_EMAIL    = os.environ.get('DISCORD_EMAIL') or ""      # Discord 账号
 DISCORD_PASSWORD = os.environ.get('DISCORD_PASSWORD') or ""   # Discord 密码
 DISCORD_TOTP_SECRET = os.environ.get('DISCORD_TOTP_SECRET') or ""  # 2FA 的 TOTP base32 密钥（可选）
 DISCORD_TIMEOUT  = int(os.environ.get('DISCORD_TIMEOUT') or "300")  # Discord 流程总超时
@@ -786,98 +783,6 @@ def run_discord_oauth(page, timeout=None):
 # =========================================================
 # 兜底：邮箱密码登录（官方已不支持，默认不启用）
 # =========================================================
-def login_with_password(page):
-    if not EMAIL or not PASSWORD:
-        log("❌ 未配置 EMAIL/PASSWORD，无法进行账号密码登录")
-        return False
-    log("💣 尝试账号密码登录...")
-    try:
-        page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-
-        def login_form_visible(p):
-            try:
-                return p.locator('input[type="password"]').first.is_visible()
-            except Exception:
-                return False
-
-        log("🛡️ 处理登录页第一道 Turnstile验证...")
-        if not solve_turnstile(page, timeout=180, success_check=login_form_visible,
-                               reload_after=8,
-                               shot_on_timeout="login_turnstile1_fail.png"):
-            log("❌ 第一道 Turnstile 未通过，无法进入登录表单")
-            try:
-                page.screenshot(path="login_turnstile1_fail.png")
-            except Exception:
-                pass
-            return False
-
-        email_sel = ('input[name="username"], input#username, input[name="email"], '
-                     'input[type="email"], input[name="EMAIL"]')
-        pwd_sel = ('input[name="password"], input#password, '
-                   'input[name="PASSWORD"], input[type="password"]')
-        email_input = page.locator(email_sel).first
-        pwd_input = page.locator(pwd_sel).first
-        email_input.wait_for(state="visible", timeout=60000)
-        log("⌨️ 输入账号...")
-        email_input.click()
-        email_input.fill(EMAIL)
-        time.sleep(random.uniform(0.8, 1.5))
-        log("⌨️ 输入密码...")
-        pwd_input.click()
-        pwd_input.fill(PASSWORD)
-
-        log("⏳ 输入完成，等待turnstile加载...")
-        time.sleep(8)
-
-        log("🛡️ 处理第二道 Turnstile...")
-        if not solve_turnstile(page, timeout=90, require_positive=True,
-                               shot_on_timeout="login_turnstile2_fail.png"):
-            log("⚠️ 第二道 Turnstile 未确认通过，仍尝试点击登录...")
-
-        log("☑️ 勾选 Keep me signed in...")
-        try:
-            remember = page.locator('input#remember, input[name="remember"]').first
-            if remember.count() > 0 and remember.is_visible():
-                remember.check(timeout=5000)
-                log("✅ 已勾选 Keep me signed in")
-            else:
-                log("⚠️ 没找到 Keep me signed in 复选框，跳过")
-        except Exception as e:
-            log(f"⚠️ 勾选失败: {e}")
-
-        submit_btn = page.locator('button[type="submit"], button:has-text("Login"), '
-                                  'button:has-text("Sign in"), button:has-text("登录")').first
-        log("🖱️ 点击登录按钮...")
-        try:
-            submit_btn.click(timeout=15000)
-        except Exception as e:
-            log(f"⚠️ 点击登录按钮失败: {e}")
-            return False
-
-        solve_turnstile(page, timeout=45, success_check=lambda p: "auth/login" not in p.url,
-                        shot_on_timeout="login_turnstile3_fail.png")
-        try:
-            page.wait_for_url(lambda u: "auth/login" not in u, timeout=30000)
-        except Exception:
-            pass
-
-        page.goto(f"{BASE_URL}/dashboard", wait_until="domcontentloaded", timeout=60000)
-        solve_turnstile(page, timeout=60, success_check=page_ready, reload_after=8)
-        log(f"📝 当前Title: {page.title()}")
-        if "auth/login" in page.url:
-            log("❌ 登录失败，账号密码错误或被封禁")
-            return False
-        log("✅ 账号密码登录成功！当前已到达dashboard页面")
-        return True
-    except Exception as e:
-        log(f"❌ 登录异常: {e}")
-        try:
-            page.screenshot(path="login_fail.png")
-        except Exception:
-            pass
-        return False
-
-
 # =========================================================
 # 登录总入口
 # =========================================================
@@ -887,66 +792,20 @@ LOGIN_MODE = ""
 def login(page):
     global LOGIN_MODE
 
-    # 1a) 显式注入 COOKIE_VALUE（GitHub Actions 场景，profile 不可持久化时用）
-    if COOKIE_VALUE:
-        log("📇 尝试注入 COOKIE_VALUE 登录...")
-        try:
-            page.context.add_cookies([{
-                'name': 'remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d',
-                'value': COOKIE_VALUE,
-                'domain': 'dash.hidencloud.com',
-                'path': '/',
-                'expires': int(time.time()) + 3600 * 24 * 365,
-                'httpOnly': True,
-                'secure': True,
-                'sameSite': 'Lax'
-            }])
-            page.goto(f"{BASE_URL}/dashboard", wait_until="domcontentloaded", timeout=60000)
-            solve_turnstile(page, timeout=90, success_check=page_ready, reload_after=8)
-            log(f"📝 当前Title: {page.title()!r}")
-            if "auth/login" not in page.url:
-                log("✅ COOKIE_VALUE 登录成功！当前已到达dashboard页面")
-                LOGIN_MODE = "Cookie"
-                return True
-            log("❌ COOKIE_VALUE 失效，尝试下一方式...")
-        except Exception as e:
-            log(f"⚠️ COOKIE_VALUE 登录尝试异常: {e}")
-
-    # 1b) 持久化 profile 里的 cookie（本地运行场景）
-    log("🔎 检查登录状态...")
+    # 唯一登录方式：Discord OAuth（HidenCloud 已停用邮箱密码与长效 cookie）
+    log("🟣 使用 Discord 授权登录...")
     try:
-        page.goto(f"{BASE_URL}/dashboard", wait_until="domcontentloaded", timeout=60000)
-        solve_turnstile(page, timeout=90, success_check=page_ready, reload_after=8)
-        log(f"📝 当前Title: {page.title()!r}")
-        if "auth/login" not in page.url:
-            log("✅ Cookie 登录成功！当前已到达dashboard页面")
-            LOGIN_MODE = "Cookie"
+        if run_discord_oauth(page):
+            LOGIN_MODE = "Discord"
             return True
     except Exception as e:
-        log(f"⚠️ 检查登录状态异常: {e}")
-
-    # 2) Discord OAuth
-    if USE_DISCORD:
-        log("⚠️ Cookie 失效，改用 Discord 授权登录...")
+        log(f"❌ Discord 登录异常: {e}")
         try:
-            if run_discord_oauth(page):
-                LOGIN_MODE = "Discord"
-                return True
-        except Exception as e:
-            log(f"❌ Discord 登录异常: {e}")
-            try:
-                page.screenshot(path="discord_error.png")
-            except Exception:
-                pass
+            page.screenshot(path="discord_error.png")
+        except Exception:
+            pass
 
-    # 3) 兜底
-    if ALLOW_PASSWORD_FALLBACK:
-        log("↩️ 回退到邮箱密码登录...")
-        if login_with_password(page):
-            LOGIN_MODE = "Password"
-            return True
-
-    log("❌ 所有登录方式均失败")
+    log("❌ Discord 登录失败")
     return False
 
 
@@ -1131,10 +990,8 @@ def renew_service(page):
 
 
 def main():
-    has_discord = bool(DISCORD_EMAIL and DISCORD_PASSWORD)
-    if not (COOKIE_VALUE or (USE_DISCORD and (has_discord or PROFILE_DIR))
-            or (ALLOW_PASSWORD_FALLBACK and EMAIL and PASSWORD)):
-        log("❌ 缺少登录配置（需 COOKIE_VALUE 或 DISCORD_EMAIL/DISCORD_PASSWORD 或允许密码兜底）")
+    if not (DISCORD_EMAIL and DISCORD_PASSWORD):
+        log("❌ 缺少登录配置（需设置 DISCORD_EMAIL 和 DISCORD_PASSWORD）")
         sys.exit(1)
 
     global SERVICE_URL

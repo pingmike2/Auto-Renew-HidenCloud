@@ -45,8 +45,6 @@ jobs:
         env:
           EMAIL: ${{ secrets.EMAIL }}
           PASSWORD: ${{ secrets.PASSWORD }}
-          COOKIE_VALUE: ${{ secrets.COOKIE_VALUE }}
-          USE_DISCORD: ${{ secrets.USE_DISCORD || 'true' }}
           DISCORD_EMAIL: ${{ secrets.DISCORD_EMAIL }}
           DISCORD_PASSWORD: ${{ secrets.DISCORD_PASSWORD }}
           DISCORD_TOTP_SECRET: ${{ secrets.DISCORD_TOTP_SECRET }}

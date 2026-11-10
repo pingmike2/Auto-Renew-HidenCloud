@@ -1,8 +1,7 @@
 ## HidenCloud自动续期
 使用Github Actions 自动给HidenCloud服务续期,HidenCloud容易封多账号，隔离好环境,使用独享节点(仅自己一人使用的)
 
-
-温馨提示： HidenCloud已取消Remenber_web长效cookie，需要使用账号密码登录，需要过cloudflare验证，尽量使用干净点的节点，否则无法过验证。
+温馨提示： HidenCloud已取消 Remenber_web 长效cookie，也停用了邮箱密码登录，需要 Discord OAuth 授权登录（带 Cloudflare 验证）。请绑定 Discord 账号并配置下方 `DISCORD_EMAIL/DISCORD_PASSWORD`，尽量使用干净点的节点，否则无法过验证。
 
 ## 配置
 
@@ -10,15 +9,20 @@
 
 | Secret 名称 | 是否必填 | 说明 | 示例 |
 |---|---|---|---|
-| `COOKIE_VALUE`  | ✅必填 | Remenber_web cookie的值,有效期大于1年  |
-| `EMAIL`         | ✅必填 | HidenCloud 邮箱 |
-| `PASSWORD`      | ✅必填 | HidenCloud 密码 |
+| `DISCORD_EMAIL`    | ✅必填 | Discord 账号（HidenCloud 已停用邮箱密码登录） |
+| `DISCORD_PASSWORD` | ✅必填 | Discord 密码 |
+| `DISCORD_TOTP_SECRET` | ❌可选 | Discord 2FA 的 TOTP base32 密钥（开了 2FA 才需要） |
+| `EMAIL`         | ❌可选 | HidenCloud 邮箱（仅通知展示用） |
+| `PASSWORD`      | ❌可选 | HidenCloud 密码（保留字段，已停用） |
+| `COOKIE_VALUE`  | ❌可选 | 已登录的 remember_web cookie 值，有则优先走 Cookie 免登录 |
 | `NODE_LINK`     | ❌可选 | 代理节点地址,例如:vless:// vmess:// trojan:// hysteria2:// anytls://|
 | `TG_BOT_TOKEN`  | ❌可选 | Telegram Bot Token | 
 | `TG_CHAT_ID`    | ❌可选 | Telegram Chat ID |
 
+登录顺序：`COOKIE_VALUE` 注入 → 持久化 profile → Discord OAuth → 邮箱密码兜底（默认关闭）。
 
-`COOKIE_VALUE`的获取如图(登录dashborad后F12或右键检查,选择 应用程序 或 Appcations 或 存储,左边找到cookie获取)
+
+`COOKIE_VALUE`(可选)的获取如图(登录dashborad后F12或右键检查,选择 应用程序 或 Appcations 或 存储,左边找到cookie获取)
 <img width="1200" height="600" alt="image" src="https://github.com/user-attachments/assets/be28a597-eef8-481b-862d-cc98533a2e27" />
 
 
